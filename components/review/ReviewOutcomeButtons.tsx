@@ -2,27 +2,27 @@
 
 import { cn } from "@/lib/utils/cn";
 
-type Outcome = "Failed" | "NeedReview" | "Solved";
+export type ReviewOutcome = "failed" | "need_review" | "solved";
 
 interface Props {
-  onPick: (o: Outcome) => void;
+  onPick: (o: ReviewOutcome) => void;
   size?: "sm" | "default";
   className?: string;
 }
 
-const OPTIONS: { value: Outcome; label: string; tone: string }[] = [
+const OPTIONS: { value: ReviewOutcome; label: string; tone: string }[] = [
   {
-    value: "Failed",
+    value: "failed",
     label: "難しかった",
     tone: "border-destructive/40 text-destructive hover:bg-destructive/10",
   },
   {
-    value: "NeedReview",
+    value: "need_review",
     label: "もう少し",
     tone: "border-warning/40 text-warning hover:bg-warning/10",
   },
   {
-    value: "Solved",
+    value: "solved",
     label: "覚えた",
     tone: "border-success/40 text-success hover:bg-success/10",
   },
@@ -52,5 +52,3 @@ export function ReviewOutcomeButtons({ onPick, size = "sm", className }: Props) 
     </div>
   );
 }
-
-export type { Outcome as ReviewOutcome };

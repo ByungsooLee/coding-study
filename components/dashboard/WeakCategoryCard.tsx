@@ -4,7 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { EmptyState } from "@/components/ui/empty-state";
 import { TrendingDown } from "lucide-react";
 import { useStore } from "@/lib/store";
-import { computeWeakCategories } from "@/lib/domain/review";
+import { computeWeakCategories } from "@/lib/domain/aggregate";
 
 export function WeakCategoryCard() {
   const data = useStore((s) => s.data);

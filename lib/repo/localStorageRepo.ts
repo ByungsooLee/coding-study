@@ -1,19 +1,24 @@
-import type { AppData, StorageRepo } from "./storage";
+import { migratePersistedState } from "./migrate";
+import {
+  APP_VERSION,
+  CURRENT_SCHEMA_VERSION,
+  type AppDataV2,
+  type StorageRepo,
+} from "./storage";
 
-const STORAGE_KEY = "leetcode-prep:v1";
-export const CURRENT_VERSION = 1;
+const STORAGE_KEY = "leetcode-prep:v2";
+const LEGACY_STORAGE_KEY = "leetcode-prep:v1";
+const SNAPSHOT_PREFIX = "leetcode-prep:snapshot:";
+const SNAPSHOT_RETENTION = 7;
 
 function isBrowser(): boolean {
   return typeof window !== "undefined";
 }
 
-function tryParse(raw: string | null): AppData | null {
+function safeParse(raw: string | null): unknown {
   if (!raw) return null;
   try {
-    const parsed = JSON.parse(raw) as AppData;
-    if (typeof parsed !== "object" || parsed === null) return null;
-    if (parsed.version !== CURRENT_VERSION) return null;
-    return parsed;
+    return JSON.parse(raw);
   } catch {
     return null;
   }
@@ -23,12 +28,27 @@ export const localStorageRepo: StorageRepo = {
   load() {
     if (!isBrowser()) return null;
     try {
-      return tryParse(window.localStorage.getItem(STORAGE_KEY));
+      const raw = window.localStorage.getItem(STORAGE_KEY);
+      const parsed = safeParse(raw);
+      if (parsed) {
+        return migratePersistedState(parsed);
+      }
+      // Discover stale v1 data and remove it (test-data only assumption)
+      const legacy = window.localStorage.getItem(LEGACY_STORAGE_KEY);
+      if (legacy) {
+        try {
+          window.localStorage.removeItem(LEGACY_STORAGE_KEY);
+        } catch {
+          // ignore
+        }
+      }
+      return null;
     } catch (err) {
       console.warn("[storage] load failed:", err);
       return null;
     }
   },
+
   save(data) {
     if (!isBrowser()) return;
     try {
@@ -37,6 +57,7 @@ export const localStorageRepo: StorageRepo = {
       console.warn("[storage] save failed (quota or disabled):", err);
     }
   },
+
   isAvailable() {
     if (!isBrowser()) return false;
     try {
@@ -48,28 +69,64 @@ export const localStorageRepo: StorageRepo = {
       return false;
     }
   },
+
   exportJSON() {
     if (!isBrowser()) return "";
-    return window.localStorage.getItem(STORAGE_KEY) ?? "";
+    const raw = window.localStorage.getItem(STORAGE_KEY);
+    if (!raw) return "";
+    try {
+      const parsed = JSON.parse(raw) as AppDataV2;
+      parsed.exportedAt = new Date().toISOString();
+      parsed.appVersion = APP_VERSION;
+      return JSON.stringify(parsed, null, 2);
+    } catch {
+      return raw;
+    }
   },
+
   importJSON(json) {
-    const parsed = JSON.parse(json) as AppData;
-    if (parsed.version !== CURRENT_VERSION) {
+    const parsed = JSON.parse(json) as unknown;
+    const migrated = migratePersistedState(parsed);
+    if (!migrated) {
       throw new Error(
-        `Unsupported data version: ${parsed.version}, expected ${CURRENT_VERSION}`,
+        `Imported data is incompatible with this app version (expected schemaVersion ${CURRENT_SCHEMA_VERSION}).`,
       );
     }
     if (isBrowser()) {
-      window.localStorage.setItem(STORAGE_KEY, json);
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(migrated));
     }
-    return parsed;
+    return migrated;
   },
+
   clear() {
     if (!isBrowser()) return;
     try {
       window.localStorage.removeItem(STORAGE_KEY);
     } catch {
       // ignore
+    }
+  },
+
+  takeSnapshot(data) {
+    if (!isBrowser()) return;
+    try {
+      const today = new Date().toISOString().slice(0, 10);
+      const key = `${SNAPSHOT_PREFIX}${today}`;
+      window.localStorage.setItem(key, JSON.stringify(data));
+
+      // Rotate: keep at most SNAPSHOT_RETENTION snapshots
+      const snapshotKeys: string[] = [];
+      for (let i = 0; i < window.localStorage.length; i++) {
+        const k = window.localStorage.key(i);
+        if (k && k.startsWith(SNAPSHOT_PREFIX)) snapshotKeys.push(k);
+      }
+      snapshotKeys.sort();
+      while (snapshotKeys.length > SNAPSHOT_RETENTION) {
+        const oldest = snapshotKeys.shift();
+        if (oldest) window.localStorage.removeItem(oldest);
+      }
+    } catch (err) {
+      console.warn("[storage] snapshot failed:", err);
     }
   },
 };

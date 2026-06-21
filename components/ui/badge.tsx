@@ -51,11 +51,14 @@ export function DifficultyBadge({ difficulty }: { difficulty: Difficulty }) {
 
 export function StatusBadge({ status }: { status: ProblemStatus }) {
   const map: Record<ProblemStatus, { label: string; variant: BadgeVariant }> = {
-    NotStarted: { label: "Not Started", variant: "outline" },
-    InProgress: { label: "In Progress", variant: "secondary" },
-    Solved: { label: "Solved", variant: "success" },
-    NeedReview: { label: "Need Review", variant: "warning" },
-    Failed: { label: "Failed", variant: "destructive" },
+    not_started: { label: "Not Started", variant: "outline" },
+    reading: { label: "Reading", variant: "outline" },
+    attempted: { label: "Attempted", variant: "secondary" },
+    solved_with_help: { label: "Solved (help)", variant: "default" },
+    solved_independently: { label: "Solved", variant: "success" },
+    need_review: { label: "Need Review", variant: "warning" },
+    failed: { label: "Failed", variant: "destructive" },
+    mastered: { label: "Mastered", variant: "success" },
   };
   const { label, variant } = map[status];
   return <Badge variant={variant}>{label}</Badge>;

@@ -141,7 +141,7 @@ export const SEED_SQL50: SqlProblem[] = _seeds.map((s) => ({
   difficulty: s.difficulty,
   weekNumber: s.weekNumber,
   url: s.url,
-  status: "NotStarted",
+  status: "not_started",
   sqlCode: "",
   note: "",
   mistakeReason: "",

@@ -59,18 +59,33 @@ export default function SettingsPage() {
       <Card>
         <CardHeader>
           <CardDescription>負荷</CardDescription>
-          <CardTitle className="text-base">1日の目標時間 (分)</CardTitle>
+          <CardTitle className="text-base">既定の Daily Load Level</CardTitle>
         </CardHeader>
-        <CardContent>
-          <Input
-            type="number"
-            min={15}
-            max={300}
-            value={settings.dailyTargetMinutes}
-            onChange={(e) =>
-              update({ dailyTargetMinutes: Number(e.target.value) || 90 })
-            }
-          />
+        <CardContent className="space-y-2">
+          <div className="flex flex-wrap gap-1.5">
+            {(["minimum", "standard", "intensive", "review_only"] as const).map(
+              (lvl) => {
+                const active = settings.defaultDailyLoadLevel === lvl;
+                return (
+                  <button
+                    key={lvl}
+                    type="button"
+                    onClick={() => update({ defaultDailyLoadLevel: lvl })}
+                    className={`rounded-md border px-2.5 py-1 text-xs font-medium transition-colors ${
+                      active
+                        ? "border-primary bg-primary/10 text-primary"
+                        : "border-border text-muted-foreground hover:bg-secondary/60"
+                    }`}
+                  >
+                    {lvl}
+                  </button>
+                );
+              },
+            )}
+          </div>
+          <p className="text-xs text-muted-foreground">
+            その日特有の上書きは Dashboard から行います。
+          </p>
         </CardContent>
       </Card>
 

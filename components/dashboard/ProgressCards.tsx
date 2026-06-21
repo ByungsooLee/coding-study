@@ -23,12 +23,18 @@ export function ProgressCards() {
 
   const lcStat: Stat = {
     label: "LeetCode Blind 75",
-    done: problems.filter((p) => p.status === "Solved").length,
+    done: problems.filter(
+      (p) =>
+        p.status === "solved_independently" || p.status === "mastered",
+    ).length,
     total: problems.length,
   };
   const sqlStat: Stat = {
     label: "SQL 50",
-    done: sql.filter((p) => p.status === "Solved").length,
+    done: sql.filter(
+      (p) =>
+        p.status === "solved_independently" || p.status === "mastered",
+    ).length,
     total: sql.length,
   };
   const conceptStat: Stat = {

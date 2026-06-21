@@ -2,34 +2,37 @@
 
 import { create } from "zustand";
 import { createInitialData, mergeWithSeed, repo } from "@/lib/repo";
-import type { AppData } from "@/lib/repo/storage";
+import type { AppDataV2 } from "@/lib/repo/storage";
 import { computeNextReviewDates } from "@/lib/domain/review";
 import { nowISO } from "@/lib/utils/date";
 import type {
+  AppSettings,
+  EnglishCoverage,
   EnglishPractice,
   MistakeLog,
   MockInterviewSession,
   Problem,
   ProblemStatus,
   PythonConcept,
-  Settings,
   SqlProblem,
+  StudyEvent,
 } from "@/lib/domain/types";
 
 interface State {
   hydrated: boolean;
   storageAvailable: boolean;
-  data: AppData;
+  data: AppDataV2;
 }
 
 interface Actions {
   hydrate: () => void;
   persist: () => void;
 
-  updateSettings: (patch: Partial<Settings>) => void;
+  updateSettings: (patch: Partial<AppSettings>) => void;
 
   updateProblem: (slug: string, patch: Partial<Problem>) => void;
   setProblemStatus: (slug: string, status: ProblemStatus) => void;
+  setProblemEnglishCoverage: (slug: string, coverage: EnglishCoverage) => void;
 
   updateSqlProblem: (slug: string, patch: Partial<SqlProblem>) => void;
   setSqlStatus: (slug: string, status: ProblemStatus) => void;
@@ -38,7 +41,7 @@ interface Actions {
   markConceptReviewed: (slug: string) => void;
   setConceptReviewOutcome: (
     slug: string,
-    outcome: "Failed" | "NeedReview" | "Solved",
+    outcome: "failed" | "need_review" | "solved",
   ) => void;
 
   upsertEnglishPractice: (
@@ -55,11 +58,14 @@ interface Actions {
   addMistake: (
     m: Omit<MistakeLog, "createdAt" | "updatedAt" | "id">,
   ) => void;
+  updateMistake: (id: string, patch: Partial<MistakeLog>) => void;
   removeMistake: (id: string) => void;
 
   addMockSession: (
     s: Omit<MockInterviewSession, "createdAt" | "updatedAt" | "id">,
   ) => void;
+
+  recordEvent: (event: Omit<StudyEvent, "id"> & { id?: string }) => void;
 
   exportJSON: () => string;
   importJSON: (json: string) => void;
@@ -68,6 +74,28 @@ interface Actions {
 
 const persistTimers = new WeakMap<object, ReturnType<typeof setTimeout>>();
 
+/** Map review-completion outcome to a fresh ProblemStatus for reschedule. */
+function outcomeToStatus(
+  outcome: "failed" | "need_review" | "solved",
+  current: ProblemStatus,
+): ProblemStatus {
+  if (outcome === "failed") return "failed";
+  if (outcome === "need_review") return "need_review";
+  // outcome === "solved"
+  switch (current) {
+    case "failed":
+      return "need_review";
+    case "need_review":
+      return "solved_independently";
+    case "solved_with_help":
+      return "solved_independently";
+    case "mastered":
+      return "mastered";
+    default:
+      return "solved_independently";
+  }
+}
+
 export const useStore = create<State & Actions>((set, get) => {
   const schedulePersist = () => {
     const ref = get();
@@ -75,6 +103,19 @@ export const useStore = create<State & Actions>((set, get) => {
     if (existing) clearTimeout(existing);
     const t = setTimeout(() => repo.save(get().data), 100);
     persistTimers.set(ref, t);
+  };
+
+  const appendEvent = (event: StudyEvent) => {
+    set((s) => ({
+      data: {
+        ...s.data,
+        studyEvents: [...s.data.studyEvents, event],
+        metadata: {
+          ...s.data.metadata,
+          eventCount: s.data.metadata.eventCount + 1,
+        },
+      },
+    }));
   };
 
   return {
@@ -86,9 +127,17 @@ export const useStore = create<State & Actions>((set, get) => {
       const available = repo.isAvailable();
       const saved = repo.load();
       if (saved) {
-        set({ data: mergeWithSeed(saved), hydrated: true, storageAvailable: available });
+        set({
+          data: mergeWithSeed(saved),
+          hydrated: true,
+          storageAvailable: available,
+        });
       } else {
-        set({ data: createInitialData(), hydrated: true, storageAvailable: available });
+        set({
+          data: createInitialData(),
+          hydrated: true,
+          storageAvailable: available,
+        });
       }
     },
 
@@ -96,7 +145,10 @@ export const useStore = create<State & Actions>((set, get) => {
 
     updateSettings: (patch) => {
       set((s) => ({
-        data: { ...s.data, settings: { ...s.data.settings, ...patch } },
+        data: {
+          ...s.data,
+          settings: { ...s.data.settings, ...patch },
+        },
       }));
       schedulePersist();
     },
@@ -114,10 +166,8 @@ export const useStore = create<State & Actions>((set, get) => {
     },
 
     setProblemStatus: (slug, status) => {
-      const reviewDates =
-        status === "Failed" || status === "NeedReview" || status === "Solved"
-          ? computeNextReviewDates(status)
-          : [];
+      const before = get().data.problems.find((p) => p.slug === slug);
+      const reviewDates = computeNextReviewDates(status);
       set((s) => ({
         data: {
           ...s.data,
@@ -135,6 +185,37 @@ export const useStore = create<State & Actions>((set, get) => {
           ),
         },
       }));
+      if (before && before.status !== status) {
+        appendEvent({
+          id: `evt-${Date.now()}-${Math.floor(Math.random() * 1e6)}`,
+          type: "problem_status_changed",
+          timestamp: nowISO(),
+          problemSlug: slug,
+          from: before.status,
+          to: status,
+        });
+      }
+      schedulePersist();
+    },
+
+    setProblemEnglishCoverage: (slug, coverage) => {
+      set((s) => ({
+        data: {
+          ...s.data,
+          problems: s.data.problems.map((p) =>
+            p.slug === slug
+              ? { ...p, englishCoverage: coverage, updatedAt: nowISO() }
+              : p,
+          ),
+        },
+      }));
+      appendEvent({
+        id: `evt-${Date.now()}-${Math.floor(Math.random() * 1e6)}`,
+        type: "english_coverage_updated",
+        timestamp: nowISO(),
+        problemSlug: slug,
+        coverage,
+      });
       schedulePersist();
     },
 
@@ -151,10 +232,8 @@ export const useStore = create<State & Actions>((set, get) => {
     },
 
     setSqlStatus: (slug, status) => {
-      const reviewDates =
-        status === "Failed" || status === "NeedReview" || status === "Solved"
-          ? computeNextReviewDates(status)
-          : [];
+      const before = get().data.sqlProblems.find((p) => p.slug === slug);
+      const reviewDates = computeNextReviewDates(status);
       set((s) => ({
         data: {
           ...s.data,
@@ -172,6 +251,16 @@ export const useStore = create<State & Actions>((set, get) => {
           ),
         },
       }));
+      if (before && before.status !== status) {
+        appendEvent({
+          id: `evt-${Date.now()}-${Math.floor(Math.random() * 1e6)}`,
+          type: "sql_status_changed",
+          timestamp: nowISO(),
+          sqlSlug: slug,
+          from: before.status,
+          to: status,
+        });
+      }
       schedulePersist();
     },
 
@@ -196,23 +285,35 @@ export const useStore = create<State & Actions>((set, get) => {
               ? {
                   ...c,
                   status: c.status === "NotReviewed" ? "Familiar" : "Mastered",
-                  reviewDates: computeNextReviewDates("NeedReview"),
+                  reviewDates: computeNextReviewDates("need_review"),
                   updatedAt: nowISO(),
                 }
               : c,
           ),
         },
       }));
+      appendEvent({
+        id: `evt-${Date.now()}-${Math.floor(Math.random() * 1e6)}`,
+        type: "concept_reviewed",
+        timestamp: nowISO(),
+        conceptSlug: slug,
+      });
       schedulePersist();
     },
 
     setConceptReviewOutcome: (slug, outcome) => {
       const nextStatus: PythonConcept["status"] =
-        outcome === "Failed"
+        outcome === "failed"
           ? "NotReviewed"
-          : outcome === "Solved"
+          : outcome === "solved"
           ? "Mastered"
           : "Familiar";
+      const psStatus: ProblemStatus =
+        outcome === "failed"
+          ? "failed"
+          : outcome === "solved"
+          ? "solved_independently"
+          : "need_review";
       set((s) => ({
         data: {
           ...s.data,
@@ -221,13 +322,21 @@ export const useStore = create<State & Actions>((set, get) => {
               ? {
                   ...c,
                   status: nextStatus,
-                  reviewDates: computeNextReviewDates(outcome),
+                  reviewDates: computeNextReviewDates(psStatus),
                   updatedAt: nowISO(),
                 }
               : c,
           ),
         },
       }));
+      appendEvent({
+        id: `evt-${Date.now()}-${Math.floor(Math.random() * 1e6)}`,
+        type: "review_completed",
+        timestamp: nowISO(),
+        targetType: "PythonConcept",
+        targetSlug: slug,
+        outcome,
+      });
       schedulePersist();
     },
 
@@ -294,6 +403,14 @@ export const useStore = create<State & Actions>((set, get) => {
           },
         };
       });
+      appendEvent({
+        id: `evt-${Date.now()}-${Math.floor(Math.random() * 1e6)}`,
+        type: "english_practice",
+        timestamp: now,
+        problemSlug,
+        templateSlug,
+        mode,
+      });
       schedulePersist();
     },
 
@@ -307,6 +424,25 @@ export const useStore = create<State & Actions>((set, get) => {
             ...s.data.mistakes,
             { ...m, id, createdAt: now, updatedAt: now },
           ],
+        },
+      }));
+      appendEvent({
+        id: `evt-${Date.now()}-${Math.floor(Math.random() * 1e6)}`,
+        type: "mistake_logged",
+        timestamp: now,
+        mistakeId: id,
+        failureType: m.failureType,
+      });
+      schedulePersist();
+    },
+
+    updateMistake: (id, patch) => {
+      set((s) => ({
+        data: {
+          ...s.data,
+          mistakes: s.data.mistakes.map((m) =>
+            m.id === id ? { ...m, ...patch, updatedAt: nowISO() } : m,
+          ),
         },
       }));
       schedulePersist();
@@ -334,6 +470,12 @@ export const useStore = create<State & Actions>((set, get) => {
       schedulePersist();
     },
 
+    recordEvent: (event) => {
+      const id = event.id ?? `evt-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
+      appendEvent({ ...event, id } as StudyEvent);
+      schedulePersist();
+    },
+
     exportJSON: () => JSON.stringify(get().data, null, 2),
 
     importJSON: (json) => {
@@ -352,3 +494,6 @@ export const useStore = create<State & Actions>((set, get) => {
     },
   };
 });
+
+// Helper exported for callsites that previously imported outcomeToStatus.
+export { outcomeToStatus };

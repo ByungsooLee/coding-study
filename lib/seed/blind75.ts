@@ -1,4 +1,5 @@
 import type { Difficulty, LeetcodeTopic, Problem } from "@/lib/domain/types";
+import { DEFAULT_ENGLISH_COVERAGE } from "@/lib/domain/types";
 import { nowISO } from "@/lib/utils/date";
 
 interface Seed {
@@ -213,7 +214,7 @@ export const SEED_BLIND75: Problem[] = _seeds.map((s) => ({
   weekNumber: s.weekNumber,
   url: s.url,
   hints: s.hints ?? [],
-  status: "NotStarted",
+  status: "not_started",
   codeNote: "",
   pseudoCode: "",
   pythonCode: "",
@@ -222,6 +223,7 @@ export const SEED_BLIND75: Problem[] = _seeds.map((s) => ({
   mistakeReason: "",
   englishNote: "",
   japaneseNote: "",
+  englishCoverage: { ...DEFAULT_ENGLISH_COVERAGE },
   reviewDates: [],
   attemptCount: 0,
   tags: [],

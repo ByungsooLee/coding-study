@@ -7,10 +7,12 @@ import { Badge } from "@/components/ui/badge";
 import { SEED_WEEKS } from "@/lib/seed/weeks";
 import { useStore } from "@/lib/store";
 import { computeDayOfWeek, computeWeekNumber } from "@/lib/utils/date";
+import { LOAD_PRESETS } from "@/lib/domain/types";
 
 export function TodayCard() {
   const startDate = useStore((s) => s.data.settings.startDate);
-  const targetMin = useStore((s) => s.data.settings.dailyTargetMinutes);
+  const loadLevel = useStore((s) => s.data.settings.defaultDailyLoadLevel);
+  const targetMin = LOAD_PRESETS[loadLevel].targetMinutes;
   const week = computeWeekNumber(startDate);
   const day = computeDayOfWeek(startDate);
   const current = SEED_WEEKS.find((w) => w.weekNumber === Math.max(1, Math.min(12, week))) ?? SEED_WEEKS[0];

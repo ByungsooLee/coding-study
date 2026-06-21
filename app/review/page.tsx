@@ -90,14 +90,24 @@ export default function ReviewPage() {
             items={dueByType.Problem ?? []}
             renderHref={(it) => `/problems/${it.targetSlug}`}
             renderExtraHref={(it) => problemsMap.get(it.targetSlug)?.url}
-            onComplete={(slug, outcome) => setProblemStatus(slug, outcome)}
+            onComplete={(slug, outcome) =>
+              setProblemStatus(
+                slug,
+                outcome === "solved" ? "solved_independently" : outcome,
+              )
+            }
           />
           <DueSection
             title="SQL 問題"
             icon={<Database className="h-4 w-4" />}
             items={dueByType.SqlProblem ?? []}
             renderHref={(it) => `/sql/${it.targetSlug}`}
-            onComplete={(slug, outcome) => setSqlStatus(slug, outcome)}
+            onComplete={(slug, outcome) =>
+              setSqlStatus(
+                slug,
+                outcome === "solved" ? "solved_independently" : outcome,
+              )
+            }
           />
           <DueSection
             title="Python 概念"
@@ -181,7 +191,7 @@ interface DueSectionProps {
   items: ReviewItem[];
   renderHref: (item: ReviewItem) => string;
   renderExtraHref?: (item: ReviewItem) => string | undefined;
-  onComplete: (slug: string, outcome: "Failed" | "NeedReview" | "Solved") => void;
+  onComplete: (slug: string, outcome: "failed" | "need_review" | "solved") => void;
 }
 
 function DueSection({
