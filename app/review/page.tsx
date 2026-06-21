@@ -13,6 +13,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { ReviewSectionRow } from "@/components/review/ReviewSectionRow";
 import { RecentMistakes } from "@/components/review/RecentMistakes";
 import { EnglishNudge } from "@/components/review/EnglishNudge";
+import { MasteryAtRiskSection } from "@/components/review/MasteryAtRiskSection";
 import { WeakCategoryCard } from "@/components/dashboard/WeakCategoryCard";
 import { useStore } from "@/lib/store";
 import { buildReviewQueue } from "@/lib/domain/review";
@@ -81,6 +82,8 @@ export default function ReviewPage() {
           value={dueCount.PythonConcept}
         />
       </div>
+
+      <MasteryAtRiskSection />
 
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-2">

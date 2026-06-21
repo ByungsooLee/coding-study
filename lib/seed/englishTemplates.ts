@@ -1,42 +1,49 @@
 import type { EnglishTemplate } from "@/lib/domain/types";
+import { validateTemplateCoverage } from "@/lib/domain/english";
 
 export const SEED_ENGLISH_TEMPLATES: EnglishTemplate[] = [
   {
-    id: "tpl-full-explanation",
-    slug: "full-explanation",
+    id: "tpl-full-walkthrough",
+    slug: "full-walkthrough",
     title: "Full Solution Walkthrough",
     scenario:
-      "テクニカル面接で問題を受け取り、ブルートフォース → 最適化 → 実装 → テストまでを一気に説明するときの土台。",
+      "テクニカル面接で問題を受け取り、ブルートフォース → 最適化 → 実装 → テストまでを一気に説明するときの土台。EnglishCoverage 6 項目に対応。",
     segments: [
       {
+        key: "clarification",
         label: "Clarification",
-        en: "First, I'd like to clarify the input constraints and edge cases. The input is ... and we can assume ...",
+        en: "First, I'd like to clarify the input constraints and edge cases. The input is ..., and we can assume ... — is that correct?",
         ja: "まず入力制約とエッジケースを確認します。入力は ... で、... と仮定して良いですか?",
       },
       {
+        key: "bruteForce",
         label: "Brute Force",
-        en: "A brute-force approach would be to ... This would take O(...) time and O(...) space.",
-        ja: "ブルートフォースは ... する方法です。時間 O(...)、空間 O(...) になります。",
+        en: "A brute-force approach would be to ... This would take O(...) time and O(...) space because ...",
+        ja: "素朴解は ... で、時間 O(...)、空間 O(...) です。理由は ...",
       },
       {
+        key: "optimization",
         label: "Optimization Idea",
         en: "We can optimize this by using ... The key observation is that ...",
-        ja: "... を使うことで最適化できます。重要な観察は ... です。",
+        ja: "... を使うことで最適化できます。鍵となる観察は ... です。",
       },
       {
-        label: "Algorithm Walkthrough",
-        en: "Then, I would implement it by iterating through ... and for each element ...",
-        ja: "次に、... をループしながら各要素について ... を行います。",
+        key: "dataStructureTradeoff",
+        label: "Data Structure Trade-off",
+        en: "I chose ... because it gives us O(1) average lookup, at the cost of O(n) extra space. An alternative is ..., but that would ...",
+        ja: "... を選んだ理由は、平均 O(1) で参照できるため。代わりに O(n) の空間を使う。別案として ... もあるが、その場合 ...",
       },
       {
+        key: "complexity",
         label: "Complexity",
-        en: "The time complexity is O(...) and the space complexity is O(...) because ...",
-        ja: "時間 O(...)、空間 O(...) です。理由は ...",
+        en: "The time complexity is O(...) because we touch each element ... The space complexity is O(...) due to ...",
+        ja: "時間 O(...) は各要素を ... 回触るため。空間 O(...) は ... のため。",
       },
       {
+        key: "edgeCases",
         label: "Edge Cases",
-        en: "Finally, I would test it with edge cases such as empty input, single element, and ...",
-        ja: "最後に、空入力 / 1要素 / ... のようなエッジケースでテストします。",
+        en: "Finally, I would test it with empty input, single element, duplicates, and ...",
+        ja: "最後に、空入力 / 1 要素 / 重複 / ... のようなエッジケースでテストします。",
       },
     ],
     phrases: [
@@ -109,3 +116,16 @@ export const SEED_ENGLISH_TEMPLATES: EnglishTemplate[] = [
     ],
   },
 ];
+
+// Dev-only assertion: Full Walkthrough must fully cover EnglishCoverage keys.
+if (process.env.NODE_ENV !== "production") {
+  const fw = SEED_ENGLISH_TEMPLATES.find((t) => t.slug === "full-walkthrough");
+  if (fw) {
+    const v = validateTemplateCoverage(fw);
+    if (!v.ok) {
+      console.warn(
+        `[seed] Full Walkthrough template incomplete. missing=${v.missing.join(",")} duplicates=${v.duplicates.join(",")}`,
+      );
+    }
+  }
+}

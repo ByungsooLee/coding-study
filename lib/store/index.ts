@@ -4,16 +4,28 @@ import { create } from "zustand";
 import { createInitialData, mergeWithSeed, repo } from "@/lib/repo";
 import type { AppDataV2 } from "@/lib/repo/storage";
 import { computeNextReviewDates } from "@/lib/domain/review";
+import { detectMasteryRisk } from "@/lib/domain/mastery";
+import {
+  applyManualCorrection,
+  buildDailyLoadHistoryEntry,
+  recomputeDailyLoadSnapshot,
+} from "@/lib/domain/load";
 import { nowISO } from "@/lib/utils/date";
 import type {
   AppSettings,
+  DailyLoadCorrectionReason,
+  DailyLoadLevel,
   EnglishCoverage,
   EnglishPractice,
+  LoadLevelChangeReason,
+  LoadLevelReservation,
+  MasteryRiskReason,
   MistakeLog,
   MockInterviewSession,
   Problem,
   ProblemStatus,
   PythonConcept,
+  ReservationReason,
   SqlProblem,
   StudyEvent,
 } from "@/lib/domain/types";
@@ -66,6 +78,43 @@ interface Actions {
   ) => void;
 
   recordEvent: (event: Omit<StudyEvent, "id"> & { id?: string }) => void;
+
+  // === Mastery ===
+  confirmMastery: (problemSlug: string) => void;
+  demoteMastery: (problemSlug: string, reasons: MasteryRiskReason[]) => void;
+  refreshMasteryRisks: () => void;
+
+  // === Load level / reservations ===
+  setDefaultDailyLoadLevel: (level: DailyLoadLevel) => void;
+  setLoadLevelOverride: (
+    date: string,
+    level: DailyLoadLevel,
+    reason: LoadLevelChangeReason,
+  ) => void;
+  clearLoadLevelOverride: (date: string) => void;
+
+  createLoadLevelReservation: (
+    input: Omit<LoadLevelReservation, "id" | "createdAt"> & {
+      id?: string;
+      reason: ReservationReason;
+    },
+  ) => string;
+  acceptLoadLevelReservation: (reservationId: string) => void;
+  dismissLoadLevelReservation: (reservationId: string) => void;
+
+  // === Daily load history ===
+  commitDailyLoadHistory: (date: string) => void;
+  commitMissingDailyLoadHistories: () => void;
+  correctActualLevel: (input: {
+    date: string;
+    newLevel: DailyLoadLevel;
+    reason?: DailyLoadCorrectionReason;
+    note?: string;
+  }) => void;
+
+  // === Rest / light review ===
+  recordRestDay: () => void;
+  recordLightReviewQuick: () => void;
 
   exportJSON: () => string;
   importJSON: (json: string) => void;
@@ -473,6 +522,367 @@ export const useStore = create<State & Actions>((set, get) => {
     recordEvent: (event) => {
       const id = event.id ?? `evt-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
       appendEvent({ ...event, id } as StudyEvent);
+      schedulePersist();
+    },
+
+    // ====================================================================
+    // Mastery
+    // ====================================================================
+
+    confirmMastery: (problemSlug) => {
+      const now = nowISO();
+      set((s) => ({
+        data: {
+          ...s.data,
+          problems: s.data.problems.map((p) =>
+            p.slug === problemSlug
+              ? {
+                  ...p,
+                  status: "mastered",
+                  reviewDates: computeNextReviewDates("mastered"),
+                  masteryRisk: { atRisk: false, reasons: [], detectedAt: now },
+                  updatedAt: now,
+                }
+              : p,
+          ),
+        },
+      }));
+      appendEvent({
+        id: `evt-${Date.now()}-${Math.floor(Math.random() * 1e6)}`,
+        type: "mastery_confirmed",
+        timestamp: now,
+        problemSlug,
+      });
+      schedulePersist();
+    },
+
+    demoteMastery: (problemSlug, reasons) => {
+      const now = nowISO();
+      set((s) => ({
+        data: {
+          ...s.data,
+          problems: s.data.problems.map((p) =>
+            p.slug === problemSlug
+              ? {
+                  ...p,
+                  status: "need_review",
+                  reviewDates: computeNextReviewDates("need_review"),
+                  masteryRisk: undefined,
+                  updatedAt: now,
+                }
+              : p,
+          ),
+        },
+      }));
+      appendEvent({
+        id: `evt-${Date.now()}-${Math.floor(Math.random() * 1e6)}`,
+        type: "mastery_demoted",
+        timestamp: now,
+        problemSlug,
+        reasons,
+      });
+      schedulePersist();
+    },
+
+    refreshMasteryRisks: () => {
+      const data = get().data;
+      const updates = data.problems.map((p) => {
+        if (p.status !== "mastered") return p;
+        const risk = detectMasteryRisk(p, data.studyEvents);
+        if (
+          p.masteryRisk?.atRisk === risk.atRisk &&
+          p.masteryRisk?.reasons.length === risk.reasons.length
+        ) {
+          return p;
+        }
+        return { ...p, masteryRisk: risk };
+      });
+      set((s) => ({ data: { ...s.data, problems: updates } }));
+      schedulePersist();
+    },
+
+    // ====================================================================
+    // Load level / reservations
+    // ====================================================================
+
+    setDefaultDailyLoadLevel: (level) => {
+      set((s) => ({
+        data: {
+          ...s.data,
+          settings: { ...s.data.settings, defaultDailyLoadLevel: level },
+        },
+      }));
+      appendEvent({
+        id: `evt-${Date.now()}-${Math.floor(Math.random() * 1e6)}`,
+        type: "daily_load_set",
+        timestamp: nowISO(),
+        level,
+      });
+      schedulePersist();
+    },
+
+    setLoadLevelOverride: (date, level, reason) => {
+      const data = get().data;
+      const existing = data.settings.loadLevelOverrides[date];
+      set((s) => ({
+        data: {
+          ...s.data,
+          settings: {
+            ...s.data.settings,
+            loadLevelOverrides: {
+              ...s.data.settings.loadLevelOverrides,
+              [date]: level,
+            },
+          },
+        },
+      }));
+      if (existing && existing !== level) {
+        appendEvent({
+          id: `evt-${Date.now()}-${Math.floor(Math.random() * 1e6)}`,
+          type: "load_level_changed",
+          timestamp: nowISO(),
+          date,
+          from: existing,
+          to: level,
+          reason,
+        });
+      }
+      schedulePersist();
+    },
+
+    clearLoadLevelOverride: (date) => {
+      set((s) => {
+        const next = { ...s.data.settings.loadLevelOverrides };
+        delete next[date];
+        return {
+          data: {
+            ...s.data,
+            settings: { ...s.data.settings, loadLevelOverrides: next },
+          },
+        };
+      });
+      schedulePersist();
+    },
+
+    createLoadLevelReservation: ({ id, ...rest }) => {
+      const reservationId = id ?? `res-${Date.now()}`;
+      const reservation: LoadLevelReservation = {
+        id: reservationId,
+        createdAt: nowISO(),
+        ...rest,
+      };
+      set((s) => ({
+        data: {
+          ...s.data,
+          settings: {
+            ...s.data.settings,
+            loadLevelReservations: [
+              ...s.data.settings.loadLevelReservations,
+              reservation,
+            ],
+          },
+        },
+      }));
+      appendEvent({
+        id: `evt-${Date.now()}-${Math.floor(Math.random() * 1e6)}`,
+        type: "load_level_reservation_created",
+        timestamp: nowISO(),
+        reservationId,
+        date: reservation.date,
+        level: reservation.level,
+        reason: reservation.reason,
+      });
+      schedulePersist();
+      return reservationId;
+    },
+
+    acceptLoadLevelReservation: (reservationId) => {
+      const now = nowISO();
+      const target = get().data.settings.loadLevelReservations.find(
+        (r) => r.id === reservationId,
+      );
+      if (!target || target.acceptedAt || target.dismissedAt) return;
+      set((s) => ({
+        data: {
+          ...s.data,
+          settings: {
+            ...s.data.settings,
+            loadLevelOverrides: {
+              ...s.data.settings.loadLevelOverrides,
+              [target.date]: target.level,
+            },
+            loadLevelReservations: s.data.settings.loadLevelReservations.map(
+              (r) => (r.id === reservationId ? { ...r, acceptedAt: now } : r),
+            ),
+          },
+        },
+      }));
+      appendEvent({
+        id: `evt-${Date.now()}-${Math.floor(Math.random() * 1e6)}`,
+        type: "load_level_reservation_accepted",
+        timestamp: now,
+        reservationId,
+        date: target.date,
+        level: target.level,
+      });
+      schedulePersist();
+    },
+
+    dismissLoadLevelReservation: (reservationId) => {
+      const now = nowISO();
+      set((s) => ({
+        data: {
+          ...s.data,
+          settings: {
+            ...s.data.settings,
+            loadLevelReservations: s.data.settings.loadLevelReservations.map(
+              (r) =>
+                r.id === reservationId && !r.acceptedAt && !r.dismissedAt
+                  ? { ...r, dismissedAt: now }
+                  : r,
+            ),
+          },
+        },
+      }));
+      appendEvent({
+        id: `evt-${Date.now()}-${Math.floor(Math.random() * 1e6)}`,
+        type: "load_level_reservation_dismissed",
+        timestamp: now,
+        reservationId,
+      });
+      schedulePersist();
+    },
+
+    // ====================================================================
+    // Daily load history (commit / backfill / manual correction)
+    // ====================================================================
+
+    commitDailyLoadHistory: (date) => {
+      const data = get().data;
+      const recomputed = recomputeDailyLoadSnapshot(
+        date,
+        data.settings,
+        data.studyEvents,
+      );
+      const existing = data.dailyLoadHistory.find((h) => h.date === date);
+      const entry = buildDailyLoadHistoryEntry({
+        date,
+        existing,
+        recomputed,
+        now: nowISO(),
+      });
+      set((s) => ({
+        data: {
+          ...s.data,
+          dailyLoadHistory: existing
+            ? s.data.dailyLoadHistory.map((h) =>
+                h.date === date ? entry : h,
+              )
+            : [...s.data.dailyLoadHistory, entry],
+          settings: existing
+            ? s.data.settings
+            : (() => {
+                const overrides = { ...s.data.settings.loadLevelOverrides };
+                if (overrides[date]) delete overrides[date];
+                return { ...s.data.settings, loadLevelOverrides: overrides };
+              })(),
+        },
+      }));
+      schedulePersist();
+    },
+
+    commitMissingDailyLoadHistories: () => {
+      const data = get().data;
+      const today = new Date().toISOString().slice(0, 10);
+      const events = data.studyEvents;
+      if (events.length === 0) return;
+
+      const history = data.dailyLoadHistory;
+      const earliestEventDate = events
+        .map((e) => e.timestamp.slice(0, 10))
+        .sort()[0];
+      const lastCommittedDate =
+        history.length === 0
+          ? earliestEventDate
+          : history.map((h) => h.date).sort().slice(-1)[0];
+
+      if (!lastCommittedDate) return;
+
+      // From day-after-last-committed to today-1
+      const start = new Date(`${lastCommittedDate}T00:00:00.000Z`);
+      const todayDate = new Date(`${today}T00:00:00.000Z`);
+      const cur = new Date(start);
+
+      if (history.length === 0) {
+        // include the earliest event date too
+      } else {
+        cur.setUTCDate(cur.getUTCDate() + 1);
+      }
+
+      while (cur < todayDate) {
+        const dateStr = cur.toISOString().slice(0, 10);
+        get().commitDailyLoadHistory(dateStr);
+        cur.setUTCDate(cur.getUTCDate() + 1);
+      }
+    },
+
+    correctActualLevel: ({ date, newLevel, reason, note }) => {
+      const data = get().data;
+      const entry = data.dailyLoadHistory.find((h) => h.date === date);
+      if (!entry) return;
+      const fromLevel = entry.actualLevel;
+      const corrected = applyManualCorrection({
+        entry,
+        newLevel,
+        reason,
+        note,
+        now: nowISO(),
+      });
+      set((s) => ({
+        data: {
+          ...s.data,
+          dailyLoadHistory: s.data.dailyLoadHistory.map((h) =>
+            h.date === date ? corrected : h,
+          ),
+        },
+      }));
+      appendEvent({
+        id: `evt-${Date.now()}-${Math.floor(Math.random() * 1e6)}`,
+        type: "actual_level_manually_corrected",
+        timestamp: nowISO(),
+        date,
+        from: fromLevel,
+        to: newLevel,
+        reason,
+        note,
+      });
+      schedulePersist();
+    },
+
+    // ====================================================================
+    // Rest day / light review
+    // ====================================================================
+
+    recordRestDay: () => {
+      const today = new Date().toISOString().slice(0, 10);
+      appendEvent({
+        id: `evt-${Date.now()}-${Math.floor(Math.random() * 1e6)}`,
+        type: "rest_day_taken",
+        timestamp: nowISO(),
+        date: today,
+      });
+      schedulePersist();
+    },
+
+    recordLightReviewQuick: () => {
+      const today = new Date().toISOString().slice(0, 10);
+      appendEvent({
+        id: `evt-${Date.now()}-${Math.floor(Math.random() * 1e6)}`,
+        type: "light_review_taken",
+        timestamp: nowISO(),
+        date: today,
+        mode: "quick",
+      });
       schedulePersist();
     },
 

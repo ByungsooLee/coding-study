@@ -3,11 +3,13 @@
 import { Sidebar } from "./Sidebar";
 import { Topbar } from "./Topbar";
 import { BottomNav } from "./BottomNav";
+import { DateChangeWatcher } from "./DateChangeWatcher";
 import { HydrationGate } from "@/lib/store/hydrate";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <HydrationGate>
+      <DateChangeWatcher />
       <div className="flex min-h-screen w-full bg-background">
         <Sidebar />
         <div className="flex min-w-0 flex-1 flex-col">

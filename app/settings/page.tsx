@@ -35,6 +35,27 @@ export default function SettingsPage() {
         </Card>
       )}
 
+      <Card className="border-primary/20 bg-primary/5">
+        <CardHeader className="pb-2">
+          <CardDescription>Privacy</CardDescription>
+          <CardTitle className="text-base">データの保存について</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-2 text-sm">
+          <p>
+            Your study data is stored locally in this browser. You can export
+            or delete your data from Settings.
+          </p>
+          <p className="text-muted-foreground">
+            あなたの学習データはこのブラウザのローカルにのみ保存されています。Settings からエクスポート / 削除できます。
+          </p>
+          <ul className="space-y-0.5 pt-1 text-xs text-muted-foreground">
+            <li>· このブラウザを変えるとデータは引き継がれません</li>
+            <li>· 第三者にデータが送信されることはありません</li>
+            <li>· データは export → 別端末で import で移行可能です</li>
+          </ul>
+        </CardContent>
+      </Card>
+
       <Card>
         <CardHeader>
           <CardDescription>カリキュラム</CardDescription>

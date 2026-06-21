@@ -1,8 +1,13 @@
 import { TodayCard } from "@/components/dashboard/TodayCard";
+import { TodayMenuCard } from "@/components/dashboard/TodayMenuCard";
 import { ProgressCards } from "@/components/dashboard/ProgressCards";
 import { ReviewQueueCard } from "@/components/dashboard/ReviewQueueCard";
-import { WeakCategoryCard } from "@/components/dashboard/WeakCategoryCard";
+import { ReadinessScoreCard } from "@/components/dashboard/ReadinessScoreCard";
+import { WeaknessControlCard } from "@/components/dashboard/WeaknessControlCard";
 import { EnglishPracticeCard } from "@/components/dashboard/EnglishPracticeCard";
+import { RecentActivityCard } from "@/components/dashboard/RecentActivityCard";
+import { BurnoutBanner } from "@/components/dashboard/BurnoutBanner";
+import { ReservationNotice } from "@/components/dashboard/ReservationNotice";
 
 export default function DashboardPage() {
   return (
@@ -10,20 +15,26 @@ export default function DashboardPage() {
       <div>
         <h1 className="text-xl font-semibold tracking-tight">Dashboard</h1>
         <p className="text-sm text-muted-foreground">
-          今日やるべきこと・3ヶ月全体の進捗・復習対象を一画面で確認します。
+          今日のメニュー・Readiness・直近の実績を一画面で確認します。
         </p>
       </div>
 
+      <ReservationNotice />
+      <BurnoutBanner />
+
       <TodayCard />
+      <TodayMenuCard />
       <ProgressCards />
 
       <div className="grid gap-4 lg:grid-cols-3">
-        <div className="lg:col-span-2">
+        <div className="space-y-4 lg:col-span-2">
+          <ReadinessScoreCard />
           <ReviewQueueCard />
         </div>
         <div className="space-y-4">
-          <WeakCategoryCard />
+          <WeaknessControlCard />
           <EnglishPracticeCard />
+          <RecentActivityCard />
         </div>
       </div>
     </div>
