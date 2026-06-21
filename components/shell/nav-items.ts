@@ -3,6 +3,7 @@ import {
   Brain,
   CalendarDays,
   ClipboardList,
+  Compass,
   Database,
   LayoutDashboard,
   ListChecks,
@@ -21,6 +22,7 @@ export interface NavItem {
 
 export const NAV_ITEMS: NavItem[] = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard, shortLabel: "Home" },
+  { href: "/guide", label: "使い方ガイド", icon: Compass, shortLabel: "Guide", pcOnly: true },
   { href: "/schedule", label: "12週スケジュール", icon: CalendarDays, shortLabel: "Plan" },
   { href: "/python", label: "Python概念", icon: Brain, shortLabel: "Python" },
   { href: "/problems", label: "Blind 75", icon: ListChecks, shortLabel: "LC" },

@@ -4,9 +4,17 @@ import { Providers } from "./providers";
 import { AppShell } from "@/components/shell/AppShell";
 
 export const metadata: Metadata = {
+  metadataBase: new URL(
+    process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000",
+  ),
   title: "LeetCode Prep — 3ヶ月外資面接対策",
   description:
     "Python基礎 / Blind 75 / SQL 50 / 英語説明 を12週間で仕上げる個人学習アプリ。",
+  openGraph: {
+    title: "LeetCode Prep",
+    description: "3ヶ月で外資コーディングテストに到達する個人学習アプリ",
+    type: "website",
+  },
 };
 
 export const viewport: Viewport = {

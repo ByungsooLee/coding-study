@@ -67,6 +67,12 @@ export function TodayCard() {
           >
             今日の復習 <ArrowRight className="h-3 w-3" />
           </Link>
+          <Link
+            href="/guide"
+            className="inline-flex items-center gap-1 rounded-md px-3 py-1.5 text-xs font-medium text-muted-foreground hover:text-primary"
+          >
+            使い方ガイド
+          </Link>
         </div>
       </CardContent>
     </Card>
